@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+- Choose external device as dafault input when made available
 
 ## [1.8.0] - 2020-06-05
 

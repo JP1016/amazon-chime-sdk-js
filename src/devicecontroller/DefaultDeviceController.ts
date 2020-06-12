@@ -41,6 +41,7 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
   private videoMaxBandwidthKbps: number = DefaultDeviceController.defaultVideoMaxBandwidthKbps;
 
   private useWebAudio: boolean = false;
+  private audioInDeviceIdGroupIdMap: Map<string, string> = new Map();
 
   private isAndroid: boolean = false;
   private isPixel3: boolean = false;
@@ -83,6 +84,7 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
   }
 
   async chooseAudioInputDevice(device: Device): Promise<DevicePermission> {
+    console.log("&&&&&& 000000 " + device);
     const result = await this.chooseInputDevice('audio', device, false);
     this.trace('chooseAudioInputDevice', device, DevicePermission[result]);
     return result;
@@ -407,6 +409,15 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
       }
     }
     this.deviceInfoCache = devices;
+    for (const device of this.deviceInfoCache) {
+      if (device.kind === 'audioinput') {
+        this.audioInDeviceIdGroupIdMap.set(device.deviceId, device.groupId);
+      }
+      // if (device.kind === deviceKind && device.deviceId === deviceId) {
+      //   return device;
+      // }
+    }
+    console.log(this.audioInDeviceIdGroupIdMap);
   }
 
   private listCachedDevicesOfKind(deviceKind: string): MediaDeviceInfo[] {
@@ -490,16 +501,26 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
       }
       return DevicePermission.PermissionGrantedByBrowser;
     }
-
+    //await this.updateDeviceInfoCacheFromBrowser();
+    //console.log(this.audioInDeviceIdGroupIdMap);
+    var groupId = '';
+    if (typeof device === 'string'){
+      groupId = this.audioInDeviceIdGroupIdMap.get(device)
+    }
     const proposedConstraints: MediaStreamConstraints | null = this.calculateMediaStreamConstraints(
       kind,
-      device
+      device,
+      groupId
     );
     if (
       this.activeDevices[kind] &&
       this.activeDevices[kind].matchesConstraints(proposedConstraints) &&
       this.activeDevices[kind].stream.active
     ) {
+      console.log(this.activeDevices[kind]);
+      console.log(this.activeDevices[kind].matchesConstraints(proposedConstraints));
+      console.log(proposedConstraints);
+
       this.logger.info(`reusing existing ${kind} device`);
       return DevicePermission.PermissionGrantedPreviously;
     }
@@ -519,6 +540,8 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
         newDevice.stream = stream;
         newDevice.constraints = proposedConstraints;
       } else {
+        console.log("&&&&&& &&&&&& &&&&&& &&&&&& &&&&&&")
+        //console.log(await navigator.mediaDevices.getUserMedia());
         newDevice.stream = await navigator.mediaDevices.getUserMedia(proposedConstraints);
         newDevice.constraints = proposedConstraints;
 
@@ -556,7 +579,7 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
         }`
       );
       return Date.now() - startTimeMs <
-        DefaultDeviceController.permissionDeniedOriginDetectionThresholdMs
+      DefaultDeviceController.permissionDeniedOriginDetectionThresholdMs
         ? DevicePermission.PermissionDeniedByBrowser
         : DevicePermission.PermissionDeniedByUser;
     }
@@ -602,7 +625,7 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
       }
     }
     return Date.now() - startTimeMs <
-      DefaultDeviceController.permissionGrantedOriginDetectionThresholdMs
+    DefaultDeviceController.permissionGrantedOriginDetectionThresholdMs
       ? DevicePermission.PermissionGrantedByBrowser
       : DevicePermission.PermissionGrantedByUser;
   }
@@ -618,7 +641,8 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
 
   private calculateMediaStreamConstraints(
     kind: string,
-    device: Device
+    device: Device,
+    groupId: string
   ): MediaStreamConstraints | null {
     let trackConstraints: MediaTrackConstraints = {};
     if (device === '') {
@@ -636,6 +660,14 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
       // @ts-ignore - device is a MediaTrackConstraints
       trackConstraints = device;
     }
+    if (kind === 'audio') {
+      trackConstraints.groupId = groupId;
+    }
+    // if (groupId === '' || groupId === null && kind === 'audio') {
+    //   trackConstraints.groupId = '';
+    // } else if (kind === 'audioinput') {
+    //   trackConstraints.groupId = groupId;
+    // }
     if (kind === 'video') {
       trackConstraints.width = trackConstraints.width || this.videoWidth;
       trackConstraints.height = trackConstraints.height || this.videoHeight;
