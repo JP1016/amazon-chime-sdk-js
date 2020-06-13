@@ -41,7 +41,7 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
   private videoMaxBandwidthKbps: number = DefaultDeviceController.defaultVideoMaxBandwidthKbps;
 
   private useWebAudio: boolean = false;
-  private audioInDeviceIdGroupIdMap: Map<string, string> = new Map();
+  private deviceIdGroupIdMap: { [mediaDeviceKind: string]: Map<string, string> | null }  = { audioinput: new Map(), audiooutput: new Map(), videoinput: new Map() };
 
   private isAndroid: boolean = false;
   private isPixel3: boolean = false;
@@ -409,15 +409,23 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
       }
     }
     this.deviceInfoCache = devices;
+    console.warn("---------________________-----------------_______________-----------------------");
+    console.warn(this.deviceInfoCache);
+    this.setDeviceIdGroupIdMap();;
+  }
+
+  private setDeviceIdGroupIdMap() {
     for (const device of this.deviceInfoCache) {
-      if (device.kind === 'audioinput') {
-        this.audioInDeviceIdGroupIdMap.set(device.deviceId, device.groupId);
-      }
+      console.warn(device.kind);
+      //if (device.kind === 'audioinput') {
+      this.deviceIdGroupIdMap[device.kind].set(device.deviceId, device.groupId);
+
+      console.log(this.deviceIdGroupIdMap[device.kind])
+      //}
       // if (device.kind === deviceKind && device.deviceId === deviceId) {
       //   return device;
       // }
     }
-    console.log(this.audioInDeviceIdGroupIdMap);
   }
 
   private listCachedDevicesOfKind(deviceKind: string): MediaDeviceInfo[] {
@@ -502,28 +510,31 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
       return DevicePermission.PermissionGrantedByBrowser;
     }
     //await this.updateDeviceInfoCacheFromBrowser();
-    //console.log(this.audioInDeviceIdGroupIdMap);
-    var groupId = '';
-    if (typeof device === 'string'){
-      groupId = this.audioInDeviceIdGroupIdMap.get(device)
-    }
-    const proposedConstraints: MediaStreamConstraints | null = this.calculateMediaStreamConstraints(
+    //console.log(this.deviceIdGroupIdMap);
+
+    var proposedConstraints: MediaStreamConstraints | null = this.calculateMediaStreamConstraints(
       kind,
-      device,
-      groupId
+      device
     );
+    console.warn("---------________________-----------------_______________-----------------------");
+    console.warn(this.deviceInfoCache);
     if (
       this.activeDevices[kind] &&
       this.activeDevices[kind].matchesConstraints(proposedConstraints) &&
       this.activeDevices[kind].stream.active
     ) {
-      console.log(this.activeDevices[kind]);
-      console.log(this.activeDevices[kind].matchesConstraints(proposedConstraints));
-      console.log(proposedConstraints);
+      console.warn(this.activeDevices[kind]);
+      console.warn(this.activeDevices[kind].matchesConstraints(proposedConstraints));
+      console.warn(proposedConstraints);
 
       this.logger.info(`reusing existing ${kind} device`);
+      console.warn(`reusing existing ${kind} device ` + DevicePermission.PermissionGrantedPreviously);
       return DevicePermission.PermissionGrantedPreviously;
     }
+
+    console.warn(`NOTTTTTT reusing existing ${kind} device`);
+    console.warn(this.activeDevices[kind]);
+    console.warn(proposedConstraints);
 
     const startTimeMs = Date.now();
     const newDevice: DeviceSelection = new DeviceSelection();
@@ -540,10 +551,29 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
         newDevice.stream = stream;
         newDevice.constraints = proposedConstraints;
       } else {
-        console.log("&&&&&& &&&&&& &&&&&& &&&&&& &&&&&&")
+        console.warn("&&&&&& &&&&&& &&&&&& &&&&&& &&&&&& Adding proposedConstraints to newDevice ------------> ")
+        console.warn(proposedConstraints);
         //console.log(await navigator.mediaDevices.getUserMedia());
-        newDevice.stream = await navigator.mediaDevices.getUserMedia(proposedConstraints);
+        //proposedConstraints = {audio : {deviceId : this.deviceInfoCache[2].deviceId}};
+        //this.updateDeviceInfoCacheFromBrowser();
+        newDevice.stream = await navigator.mediaDevices.getUserMedia(proposedConstraints);     // ------> need to check this out? is it actually getting based on the proposedConstraint
+        //proposedConstraints = {audio : {deviceId : }}
+
+        console.warn(newDevice.stream);
         newDevice.constraints = proposedConstraints;
+        console.warn(newDevice.constraints);
+        //after the default device is clicked
+        console.warn(newDevice.stream.active);  //enabled
+
+        console.warn(newDevice.stream.getTracks()); // -----> MacBook Pro Microphone (Built-in)
+        console.warn(newDevice.stream.getAudioTracks());
+        newDevice.stream.getTracks()[0].addEventListener('start',() => {});
+
+        // we just assigned to the newDevice but have not chosen this new device yet.
+        // The proposedConstraints gets assigned to the newDevice constraints but should nt we activate it somewhere ?
+        // like chooseDeviceWithConstraint(proposedConstraints) or activate newDevice
+
+
 
         if (kind === 'video' && this.lastNoVideoInputDeviceCount > callCount) {
           this.logger.warn(
@@ -588,6 +618,7 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
     const oldStream: MediaStream | null = this.activeDevices[kind]
       ? this.activeDevices[kind].stream
       : null;
+    console.warn(newDevice);
     this.activeDevices[kind] = newDevice;
 
     if (kind === 'video') {
@@ -639,12 +670,34 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
     this.boundAudioVideoController.audioMixController.bindAudioDevice(deviceInfo);
   }
 
+  private getDeviceIdForDefault(mediaKind: string) : string {
+    const expectedGroupId = this.deviceIdGroupIdMap[mediaKind].get('default');
+    var expectedDeviceId = '';
+    console.warn('-------------start');
+    console.warn(expectedGroupId);
+    console.warn(this.deviceIdGroupIdMap[mediaKind]);
+    for (let [deviceId, groupId] of this.deviceIdGroupIdMap[mediaKind])
+    {
+      if(groupId === expectedGroupId){
+        console.warn(deviceId + "--->" + groupId);
+        expectedDeviceId = deviceId;
+      }
+
+      console.warn(expectedDeviceId);
+
+    };
+    console.warn(expectedDeviceId);
+
+    console.warn('-------------end');
+    return expectedDeviceId;
+  }
+
   private calculateMediaStreamConstraints(
     kind: string,
-    device: Device,
-    groupId: string
+    device: Device
   ): MediaStreamConstraints | null {
     let trackConstraints: MediaTrackConstraints = {};
+    let groupId = '';
     if (device === '') {
       device = null;
     }
@@ -652,16 +705,22 @@ export default class DefaultDeviceController implements DeviceControllerBasedMed
     if (device === null) {
       return null;
     } else if (typeof device === 'string') {
-      trackConstraints.deviceId = { exact: device };
+      if (kind === 'audio') {
+        if (device === 'default'){
+          device = this.getDeviceIdForDefault('audioinput');
+          console.warn("$$$$$$$$$$$$$$$$$$$$$$$ default changed to ");
+          console.warn(device.toString());
+        }
+        trackConstraints.deviceId = { exact: device };
+        groupId = this.deviceIdGroupIdMap['audioinput'].get(device);
+        trackConstraints.groupId = groupId;
+      }
     } else if (stream) {
       // @ts-ignore - create a fake track constraint using the stream id
       trackConstraints.streamId = stream.id;
     } else {
       // @ts-ignore - device is a MediaTrackConstraints
       trackConstraints = device;
-    }
-    if (kind === 'audio') {
-      trackConstraints.groupId = groupId;
     }
     // if (groupId === '' || groupId === null && kind === 'audio') {
     //   trackConstraints.groupId = '';
